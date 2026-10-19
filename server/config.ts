@@ -1,7 +1,7 @@
 import "dotenv/config";
 export const config = {
   production: process.env.NODE_ENV === "production" || !!process.env.VERCEL,
-  origin: process.env.APP_ORIGIN || "http://127.0.0.1:5173",
+  origin: (process.env.APP_ORIGIN || "http://127.0.0.1:5173").replace(/\/+$/, ""),
   dataDir: process.env.DATA_DIR || ".data",
   databaseUrl: process.env.DATABASE_URL,
   storageUrl: process.env.SUPABASE_URL,

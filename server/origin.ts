@@ -4,7 +4,9 @@ export function isAllowedOrigin(
   production: boolean,
 ) {
   if (!origin) return false;
-  if (origin === expected) return true;
+  const cleanOrigin = origin.replace(/\/+$/, "");
+  const cleanExpected = expected.replace(/\/+$/, "");
+  if (cleanOrigin === cleanExpected) return true;
   if (production) return false;
   try {
     const url = new URL(origin),
