@@ -19,7 +19,7 @@ const s = useSession(),
   busy = ref(false);
 const manage = computed(() => ["owner", "admin"].includes(s.user?.role || ""));
 const states: Record<string, string> = {
-    active: "Darsda",
+    active: "Dars o‘tilmoqda (jarayonda)",
     paused: "Tanaffus",
     completed: "Yakunlangan",
     cancelled: "Bekor qilingan",
@@ -29,6 +29,53 @@ const states: Record<string, string> = {
     pending: "Tekshiruvda",
     rejected: "Rad etilgan",
   };
+
+function stateLabel(a: any) {
+  if (
+    a.state === "completed" ||
+    (a.planned_end && Date.parse(a.planned_end) <= Date.now())
+  ) {
+    return "Yakunlangan";
+  }
+  return states[a.state] || a.state;
+}
+
+function parseLocation(raw: any) {
+  if (!raw) return null;
+  let loc = raw;
+  if (typeof loc === "string") {
+    try {
+      loc = JSON.parse(loc);
+    } catch {
+      return null;
+    }
+  }
+  if (!loc || typeof loc !== "object") return null;
+  if (
+    loc.latitude == null &&
+    loc.longitude == null &&
+    loc.accuracy == null &&
+    loc.distance_m == null
+  ) {
+    return null;
+  }
+  return loc;
+}
+
+function getLocation(type: string) {
+  if (!selected.value) return null;
+  return parseLocation(selected.value[type + "_location"]);
+}
+
+function formatCoord(val: any): string {
+  const num = Number(val);
+  return !isNaN(num) && val != null ? num.toFixed(5) : "—";
+}
+
+function formatDistance(val: any): string {
+  const num = Number(val);
+  return !isNaN(num) && val != null ? Math.round(num) + " m" : "—";
+}
 const filtered = computed(() =>
   rows.value.filter(
     (a) =>
@@ -204,7 +251,7 @@ onMounted(load);
               {{ a.ended_at ? timeLabel(a.ended_at) : "…" }}
             </td>
             <td>
-              <span class="badge">{{ states[a.state] }}</span>
+              <span class="badge">{{ stateLabel(a) }}</span>
             </td>
             <td>
               <span
@@ -277,19 +324,22 @@ onMounted(load);
                   : "Yakunlanmagan"
             }}
           </p>
-          <template v-if="selected[type + '_location']"
-            ><p>
+          <template v-if="getLocation(type)"
+            ><p v-if="getLocation(type)?.accuracy != null">
               <Icon name="pin" :size="16" />Aniqlik:
-              {{ Math.round(selected[type + "_location"].accuracy) }} m
+              {{ formatDistance(getLocation(type)?.accuracy) }}
             </p>
-            <small
+            <small v-if="getLocation(type)?.distance_m != null"
               >Filialgacha:
-              {{ selected[type + "_location"].distance_m }} m</small
-            ><small
-              >{{ selected[type + "_location"].latitude.toFixed(5) }},
-              {{ selected[type + "_location"].longitude.toFixed(5) }}</small
+              {{ formatDistance(getLocation(type)?.distance_m) }}</small
+            ><small v-if="getLocation(type)?.latitude != null"
+              >{{ formatCoord(getLocation(type)?.latitude) }},
+              {{ formatCoord(getLocation(type)?.longitude) }}</small
             ></template
           >
+          <div v-else class="evidence-empty">
+            <span class="muted tiny">Lokatsiya mavjud emas</span>
+          </div>
         </article>
       </div>
       <div v-if="selected.reason" class="warning-strip">

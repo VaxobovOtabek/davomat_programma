@@ -9,7 +9,6 @@ const s = useSession(),
   audit = ref<any[]>([]),
   error = ref(""),
   busy = ref(false),
-  currentPassword = ref(""),
   newPassword = ref("");
 const branch = ref({
   id: undefined as string | undefined,
@@ -20,7 +19,6 @@ const branch = ref({
   max_accuracy_m: 50,
 });
 async function load() {
-  if (s.user?.must_change_password) return;
   try {
     branches.value = await api("/branches");
     if (["owner", "admin"].includes(s.user?.role || ""))
@@ -31,17 +29,15 @@ async function load() {
   }
 }
 async function change() {
+  if (newPassword.value.length < 8) return;
   busy.value = true;
   try {
     await post("/auth/change-password", {
-      currentPassword: currentPassword.value,
       newPassword: newPassword.value,
     });
     await s.refresh();
-    currentPassword.value = "";
     newPassword.value = "";
-    await load();
-    toast("Parol yangilandi.");
+    toast("Parol muvaffaqiyatli yangilandi.");
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -80,10 +76,6 @@ onMounted(load);
       <p class="muted">Shaxsiy hisob, filial lokatsiyasi va amallar tarixi.</p>
     </div>
   </section>
-  <div v-if="s.user?.must_change_password" class="warning-strip">
-    <Icon name="key" />Davom etishdan oldin administrator bergan vaqtinchalik
-    parolni almashtiring.
-  </div>
   <div v-if="error" class="error">{{ error }}</div>
   <div class="settings-grid">
     <section class="panel">
@@ -101,27 +93,22 @@ onMounted(load);
         </div>
         <form @submit.prevent="change">
           <label
-            >Joriy parol<input
-              v-model="currentPassword"
-              type="password"
-              autocomplete="current-password"
-              required /></label
-          ><label
             >Yangi parol<input
               v-model="newPassword"
               type="password"
               autocomplete="new-password"
               minlength="8"
               maxlength="128"
+              placeholder="Kamida 8 ta belgi"
               required /></label
-          ><button class="btn primary" :disabled="busy">
-            <Icon name="key" :size="17" />Parolni yangilash
+          ><button class="btn primary" :disabled="busy || newPassword.length < 8">
+            <Icon name="key" :size="17" />Parolni saqlash
           </button>
         </form>
       </div>
     </section>
     <section
-      v-if="s.user?.role === 'owner' && !s.user.must_change_password"
+      v-if="s.user?.role === 'owner'"
       class="panel"
     >
       <header class="panel-head">

@@ -323,7 +323,7 @@ onMounted(load);
               required
               placeholder="00123456" /></label
           ><label v-if="!editing"
-            >Boshlang‘ich parol<input
+            >Parol<input
               v-model="form.password"
               type="password"
               minlength="8"
@@ -375,7 +375,7 @@ onMounted(load);
           parol. Eski sessiyalar bekor qilinadi.
         </p>
         <label
-          >Yangi vaqtinchalik parol<input
+          >Yangi parol<input
             v-model="newPassword"
             type="password"
             minlength="8"

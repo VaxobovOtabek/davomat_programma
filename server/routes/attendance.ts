@@ -251,14 +251,31 @@ attendanceRouter.post(
     );
   }),
 );
+export async function autoCompleteLessons(dbOrTx: { query: DB["query"] }) {
+  try {
+    await dbOrTx.query(
+      "UPDATE davomat.attendance SET state='completed',ended_at=planned_end,approval=CASE WHEN reason IS NOT NULL THEN 'pending' ELSE 'approved' END,version=version+1 WHERE state IN ('active','paused') AND planned_end<=now()",
+    );
+  } catch (err) {
+    console.error("Auto-complete lessons error:", err);
+  }
+}
+
 attendanceRouter.get(
   "/attendance",
   asyncRoute(async (req, res) => {
     const u = actor(req);
-    const rows = await query(
-      "SELECT a.*,l.subject,l.group_name,l.room,u.first_name,u.last_name FROM davomat.attendance a JOIN davomat.lessons l ON l.id=a.lesson_id JOIN davomat.users u ON u.id=a.teacher_id WHERE a.org_id=$1 AND ($2='owner' OR a.branch_id=$3) AND ($2<>'teacher' OR a.teacher_id=$4) ORDER BY a.started_at DESC LIMIT 1000",
-      [u.org_id, u.role, u.branch_id, u.id],
-    );
+    await autoCompleteLessons({ query });
+    const isToday = req.query.today === "1" || req.query.today === "true";
+    let sql =
+      "SELECT a.*,l.subject,l.group_name,l.room,u.first_name,u.last_name FROM davomat.attendance a JOIN davomat.lessons l ON l.id=a.lesson_id JOIN davomat.users u ON u.id=a.teacher_id WHERE a.org_id=$1 AND ($2='owner' OR a.branch_id=$3) AND ($2<>'teacher' OR a.teacher_id=$4)";
+    if (isToday) {
+      sql +=
+        " AND (a.started_at >= (CURRENT_DATE AT TIME ZONE 'Asia/Tashkent')::timestamptz OR a.state IN ('active','paused')) ORDER BY a.started_at DESC LIMIT 100";
+    } else {
+      sql += " ORDER BY a.started_at DESC LIMIT 200";
+    }
+    const rows = await query(sql, [u.org_id, u.role, u.branch_id, u.id]);
     res.json(
       rows.map((a) => {
         if (u.role === "accountant") {

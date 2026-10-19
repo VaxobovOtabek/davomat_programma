@@ -113,7 +113,7 @@ test("full API flow: custom login, roles, lesson, evidence, payroll and revocati
     teacherCookie = signin.cookie;
     assert.equal(
       (await call("/lessons", "GET", undefined, teacherCookie)).status,
-      403,
+      200,
     );
     const change = await call(
       "/auth/change-password",

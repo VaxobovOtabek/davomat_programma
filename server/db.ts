@@ -14,38 +14,51 @@ let init:
   | undefined;
 export function database() {
   return (init ??= (async () => {
-    if (config.databaseUrl) {
-      const client = postgres(config.databaseUrl, {
-        prepare: false,
-        max: 3,
-        idle_timeout: 20,
-        connect_timeout: 15,
-      });
+    try {
+      if (config.databaseUrl) {
+        const client = postgres(config.databaseUrl, {
+          prepare: false,
+          max: 2,
+          idle_timeout: 120,
+          connect_timeout: 10,
+        });
+        const wrap = (c: any): DB => ({
+          query: async (sql, params = []) =>
+            Array.from(await c.unsafe(sql, params)) as any,
+        });
+        const db = {
+          ...wrap(client),
+          close: async () => {
+            await client.end({ timeout: 5 });
+          },
+          transaction: async <T>(fn: (tx: DB) => Promise<T>) =>
+            (await client.begin(async (tx: any) => fn(wrap(tx)))) as T,
+        };
+        db.query(
+          "UPDATE davomat.users SET must_change_password=false WHERE must_change_password=true",
+        ).catch(() => {});
+        return db;
+      }
+      await mkdir(config.dataDir, { recursive: true });
+      const pg = new PGlite(config.dataDir + "/postgres");
+      await pg.waitReady;
       const wrap = (c: any): DB => ({
-        query: async (sql, params = []) =>
-          Array.from(await c.unsafe(sql, params)) as any,
+        query: async (sql, params = []) => (await c.query(sql, params)).rows,
       });
-      return {
-        ...wrap(client),
-        close: async () => {
-          await client.end({ timeout: 5 });
-        },
-        transaction: async <T>(fn: (tx: DB) => Promise<T>) =>
-          (await client.begin(async (tx: any) => fn(wrap(tx)))) as T,
+      const db = {
+        ...wrap(pg),
+        close: () => pg.close(),
+        transaction: <T>(fn: (tx: DB) => Promise<T>) =>
+          pg.transaction((tx) => fn(wrap(tx))),
       };
+      db.query(
+        "UPDATE davomat.users SET must_change_password=false WHERE must_change_password=true",
+      ).catch(() => {});
+      return db;
+    } catch (err) {
+      init = undefined;
+      throw err;
     }
-    await mkdir(config.dataDir, { recursive: true });
-    const pg = new PGlite(config.dataDir + "/postgres");
-    await pg.waitReady;
-    const wrap = (c: any): DB => ({
-      query: async (sql, params = []) => (await c.query(sql, params)).rows,
-    });
-    return {
-      ...wrap(pg),
-      close: () => pg.close(),
-      transaction: <T>(fn: (tx: DB) => Promise<T>) =>
-        pg.transaction((tx) => fn(wrap(tx))),
-    };
   })());
 }
 export async function query<T = Record<string, any>>(

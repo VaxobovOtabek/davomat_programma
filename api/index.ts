@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 let appPromise: Promise<any> | null = null;
 let initError: any = null;
 
-async function getApp() {
+function getApp() {
   if (initError) throw initError;
   if (!appPromise) {
     appPromise = import("../server/app.js")
@@ -15,6 +15,9 @@ async function getApp() {
   }
   return appPromise;
 }
+
+// Pre-warm on serverless container start
+getApp().catch(() => {});
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {

@@ -7,4 +7,6 @@ dist/
 test-results/
 playwright-report/
 *.log
+.agents/
+skills-lock.json
 

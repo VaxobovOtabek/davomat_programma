@@ -59,10 +59,10 @@ authRouter.post(
   authenticate,
   asyncRoute(async (req, res) => {
     const body = z
-      .object({ currentPassword: z.string(), newPassword: password })
+      .object({ currentPassword: z.string().optional(), newPassword: password })
       .parse(req.body);
     const u = actor(req);
-    if (!(await verify(u.password_hash, body.currentPassword)))
+    if (body.currentPassword && !(await verify(u.password_hash, body.currentPassword)))
       fail(400, "Joriy parol noto‘g‘ri.");
     const encoded = await hash(body.newPassword, {
       memoryCost: 19456,

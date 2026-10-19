@@ -92,7 +92,7 @@ onUnmounted(() => stream.value?.getTracks().forEach((t) => t.stop()));
 </script>
 <template>
   <Modal
-    :title="attendanceId ? 'Darsni yakunlash' : 'Davomatni tasdiqlash'"
+    title="Darsni boshlash — selfi va lokatsiya"
     @close="emit('close')"
     ><div class="modal-body">
       <div class="capture-summary">
@@ -159,13 +159,7 @@ onUnmounted(() => stream.value?.getTracks().forEach((t) => t.stop()));
         :disabled="busy || !photo || !location"
         @click="save"
       >
-        {{
-          busy
-            ? "Saqlanmoqda…"
-            : attendanceId
-              ? "Darsni yakunlash"
-              : "Darsni boshlash"
-        }}
+        {{ busy ? "Saqlanmoqda…" : "Darsni boshlash" }}
       </button>
     </footer></Modal
   >

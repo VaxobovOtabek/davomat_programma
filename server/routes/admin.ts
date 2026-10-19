@@ -14,6 +14,7 @@ import {
   safeUser,
 } from "../security.js";
 import { saveImage, readImage } from "../media.js";
+import { autoCompleteLessons } from "./attendance.js";
 export const adminRouter = Router();
 const uuid = z.string().uuid();
 
@@ -158,7 +159,7 @@ adminRouter.post(
       )
         fail(400, "Rasm sizga tegishli emas.");
       await tx.query(
-        "INSERT INTO davomat.users(id,org_id,branch_id,login,password_hash,first_name,last_name,position,role,avatar_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        "INSERT INTO davomat.users(id,org_id,branch_id,login,password_hash,first_name,last_name,position,role,avatar_id,must_change_password) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)",
         [
           id,
           u.org_id,
@@ -296,7 +297,7 @@ adminRouter.post(
       if (target.role === "owner" && u.role !== "owner")
         fail(403, "Ruxsat yo‘q.");
       await tx.query(
-        "UPDATE davomat.users SET password_hash=$1,must_change_password=true WHERE id=$2",
+        "UPDATE davomat.users SET password_hash=$1,must_change_password=false WHERE id=$2",
         [encoded, id],
       );
       await tx.query("DELETE FROM davomat.auth_sessions WHERE user_id=$1", [
@@ -514,6 +515,7 @@ adminRouter.get(
         .parse(
           req.query.to || new Date(Date.now() + 7 * 86400000).toISOString(),
         );
+    await autoCompleteLessons({ query });
     res.json(
       await query(
         "SELECT l.*,u.first_name,u.last_name FROM davomat.lessons l JOIN davomat.users u ON u.id=l.teacher_id WHERE l.org_id=$1 AND l.starts_at<$2 AND l.ends_at>$3 AND ($4='owner' OR l.branch_id=$5) AND ($4<>'teacher' OR l.teacher_id=$6) ORDER BY l.starts_at LIMIT 1000",

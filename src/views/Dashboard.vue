@@ -32,16 +32,23 @@ const s = useSession(),
 let timer: ReturnType<typeof setInterval>,
   clock: ReturnType<typeof setInterval>;
 const teacher = computed(() => s.user?.role === "teacher");
+let isFetching = false;
 async function load() {
-  if (document.hidden) return;
+  if (document.hidden || isFetching) return;
+  isFetching = true;
   try {
     const range = dayRange(today());
-    const results = await Promise.all([
+    const requests: Promise<any>[] = [
       api<Lesson[]>("/lessons?" + new URLSearchParams(range)),
-      api<Attendance[]>("/attendance"),
-      teacher.value ? Promise.resolve([]) : api<User[]>("/users"),
-    ]);
-    [lessons.value, attendances.value, users.value] = results;
+      api<Attendance[]>("/attendance?today=1"),
+    ];
+    if (!teacher.value && users.value.length === 0) {
+      requests.push(api<User[]>("/users"));
+    }
+    const [l, a, u] = await Promise.all(requests);
+    lessons.value = l;
+    attendances.value = a;
+    if (u) users.value = u;
     drafts.value = ((await get<any[]>("davomat-drafts")) || []).filter(
       (d) => d.userId === s.user?.id,
     );
@@ -51,11 +58,12 @@ async function load() {
     error.value = (e as Error).message;
   } finally {
     loading.value = false;
+    isFetching = false;
   }
 }
 onMounted(() => {
   load();
-  timer = setInterval(load, 5000);
+  timer = setInterval(load, 30000);
   clock = setInterval(() => (now.value = Date.now()), 1000);
 });
 onUnmounted(() => {
@@ -63,7 +71,11 @@ onUnmounted(() => {
   clearInterval(clock);
 });
 const active = computed(() =>
-  attendances.value.filter((a) => ["active", "paused"].includes(a.state)),
+  attendances.value.filter(
+    (a) =>
+      ["active", "paused"].includes(a.state) &&
+      Date.parse(a.planned_end) > now.value,
+  ),
 );
 const mine = computed(() =>
   active.value.find((a) => a.teacher_id === s.user?.id),
@@ -99,17 +111,15 @@ function elapsed(a: Attendance) {
 }
 function status(l: Lesson) {
   const a = attendances.value.find((a) => a.lesson_id === l.id);
-  return l.status === "cancelled"
-    ? "Bekor qilingan"
-    : a?.state === "completed"
-      ? "Yakunlangan"
-      : a?.state === "paused"
-        ? "Tanaffusda"
-        : a
-          ? "Darsda"
-          : Date.parse(l.starts_at) < now.value
-            ? "Boshlanmagan"
-            : "Kutilmoqda";
+  if (l.status === "cancelled") return "Bekor qilingan";
+  if (a) {
+    if (a.state === "completed" || Date.parse(a.planned_end) <= now.value) {
+      return "Yakunlangan";
+    }
+    if (a.state === "paused") return "Tanaffusda";
+    return "Dars o‘tilmoqda (jarayonda)";
+  }
+  return Date.parse(l.starts_at) < now.value ? "Boshlanmagan" : "Kutilmoqda";
 }
 async function action(a: Attendance) {
   try {
@@ -244,12 +254,12 @@ async function sync(d: any) {
         <span class="live-label"
           ><i></i>
           {{
-            mine.state === "paused" ? "TANAFFUS" : "DARS DAVOM ETMOQDA"
+            mine.state === "paused" ? "TANAFFUS" : "Dars o‘tilmoqda (jarayonda)"
           }}</span
         >
         <h2>{{ mine.subject }} · {{ mine.group_name }}</h2>
         <p>
-          {{ mine.room }}-xona · Boshlangan: {{ timeLabel(mine.started_at) }}
+          {{ mine.room }}-xona · Boshlangan: {{ timeLabel(mine.started_at) }} · Rejali yakun: {{ timeLabel(mine.planned_end) }} (avtomat tugaydi)
         </p>
       </div>
       <strong class="timer">{{ elapsed(mine) }}</strong>
@@ -258,17 +268,7 @@ async function sync(d: any) {
           <Icon :name="mine.state === 'paused' ? 'play' : 'pause'" />{{
             mine.state === "paused" ? "Davom ettirish" : "Tanaffus"
           }}</button
-        ><button
-          class="btn danger"
-          @click="
-            capture = {
-              attendanceId: mine.id,
-              title: mine.subject + ' · ' + mine.group_name,
-            }
-          "
         >
-          <Icon name="stop" />Yakunlash
-        </button>
       </div>
     </div>
     <div class="dashboard-grid">
@@ -339,7 +339,7 @@ async function sync(d: any) {
                   <span
                     class="badge"
                     :class="
-                      status(l) === 'Darsda'
+                      status(l) === 'Dars o‘tilmoqda (jarayonda)'
                         ? 'green'
                         : status(l) === 'Boshlanmagan'
                           ? 'amber'

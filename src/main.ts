@@ -2,13 +2,13 @@ import { createApp } from "vue";
 import { createPinia } from "pinia";
 import { createRouter, createWebHistory } from "vue-router";
 import App from "./App.vue";
-import Login from "./views/Login.vue";
-import Dashboard from "./views/Dashboard.vue";
-import Users from "./views/Users.vue";
-import Schedule from "./views/Schedule.vue";
-import Attendance from "./views/Attendance.vue";
-import Payroll from "./views/Payroll.vue";
-import Settings from "./views/Settings.vue";
+const Login = () => import("./views/Login.vue");
+const Dashboard = () => import("./views/Dashboard.vue");
+const Users = () => import("./views/Users.vue");
+const Schedule = () => import("./views/Schedule.vue");
+const Attendance = () => import("./views/Attendance.vue");
+const Payroll = () => import("./views/Payroll.vue");
+const Settings = () => import("./views/Settings.vue");
 import { useSession } from "./session";
 import "./style.css";
 const router = createRouter({
@@ -31,8 +31,6 @@ router.beforeEach(async (to) => {
   if (!s.loaded) await s.refresh();
   if (!s.user && to.path != "/login") return "/login";
   if (s.user && to.path === "/login") return "/";
-  if (s.user?.must_change_password && to.path != "/settings")
-    return "/settings";
   if (s.user?.role === "teacher" && to.path === "/users") return "/";
 });
 app.use(router);

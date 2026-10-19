@@ -34,11 +34,6 @@ export async function authenticate(
     );
     if (!rows[0]) fail(401, "Sessiya tugagan. Qayta kiring.");
     (req as any).user = rows[0];
-    if (
-      rows[0].must_change_password &&
-      !["/me", "/auth/change-password", "/auth/logout"].includes(req.path)
-    )
-      fail(403, "Avval parolingizni yangilang.");
     next();
   } catch (e) {
     next(e);

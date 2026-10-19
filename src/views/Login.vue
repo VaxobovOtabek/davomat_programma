@@ -17,7 +17,7 @@ async function submit() {
   try {
     await post("/auth/login", { login: login.value, password: password.value });
     await s.refresh();
-    await router.push(s.user?.must_change_password ? "/settings" : "/");
+    await router.push("/");
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
