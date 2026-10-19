@@ -1,0 +1,20 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {randomUUID} from 'node:crypto';
+import {readFile,writeFile} from 'node:fs/promises';
+const exec=promisify(execFile);
+test('local setup is repeatable and preserves existing credentials and data',async()=>{
+ const directory='.data/setup-test-'+randomUUID();
+ const env={...process.env,DATA_DIR:directory,DATABASE_URL:'',NODE_ENV:'test',VERCEL:'',PORT:'0',SUPABASE_URL:'',SUPABASE_SECRET_KEY:''};
+ const run=()=>exec(process.execPath,['--import','tsx','scripts/setup-local.ts'],{env,timeout:60000});
+ await run();
+ const original=await readFile(directory+'/LOCAL_LOGIN.txt','utf8');
+ assert.match(original,/Login: 00000001/);
+ await writeFile(directory+'/keep-me.txt','existing data');
+ const result=await run();
+ assert.match(result.stdout,/avval tayyorlangan/);
+ assert.equal(await readFile(directory+'/LOCAL_LOGIN.txt','utf8'),original);
+ assert.equal(await readFile(directory+'/keep-me.txt','utf8'),'existing data');
+});
