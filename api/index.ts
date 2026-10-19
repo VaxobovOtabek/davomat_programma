@@ -29,8 +29,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         message: "Server sozlamalarida xatolik: " + (err?.message || String(err)),
         missingEnv: {
           DATABASE_URL: !process.env.DATABASE_URL,
-          SUPABASE_URL: !process.env.SUPABASE_URL,
-          SUPABASE_SECRET_KEY: !process.env.SUPABASE_SECRET_KEY,
+          SUPABASE_URL: !(
+            process.env.SUPABASE_URL ||
+            process.env.VITE_SUPABASE_URL ||
+            process.env.NEXT_PUBLIC_SUPABASE_URL
+          ),
+          SUPABASE_SECRET_KEY: !(
+            process.env.SUPABASE_SECRET_KEY ||
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          ),
           APP_ORIGIN: !process.env.APP_ORIGIN,
         },
       }),
