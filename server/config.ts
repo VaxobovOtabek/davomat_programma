@@ -14,7 +14,15 @@ if (
     !config.storageUrl ||
     !config.storageKey ||
     !process.env.APP_ORIGIN)
-)
-  throw new Error(
-    "Production requires DATABASE_URL, SUPABASE_URL, SUPABASE_SECRET_KEY and APP_ORIGIN",
-  );
+) {
+  const missing = [
+    !config.databaseUrl && "DATABASE_URL",
+    !config.storageUrl && "SUPABASE_URL",
+    !config.storageKey && "SUPABASE_SECRET_KEY",
+    !process.env.APP_ORIGIN && "APP_ORIGIN",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  throw new Error(`Production requires: ${missing}`);
+}
+
