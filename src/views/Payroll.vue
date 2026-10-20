@@ -17,6 +17,21 @@ const s = useSession(),
   bonus = ref(0),
   deduction = ref(0),
   reason = ref("");
+function parseItems(val: any): any[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === "string") {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === "object") return Object.values(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (typeof val === "object") return Object.values(val);
+  return [];
+}
 const teacher = computed(() => s.user?.role === "teacher"),
   branchRuns = computed(() => {
     if (teacher.value || !branch.value) return runs.value;
@@ -28,7 +43,7 @@ const teacher = computed(() => s.user?.role === "teacher"),
         ? runs.value.find((r) => r.id === runId.value)
         : branchRuns.value[0]) || null,
   ),
-  items = computed(() => run.value?.items || []),
+  items = computed(() => parseItems(run.value?.items)),
   minutes = computed(() =>
     items.value.reduce((n: number, i: any) => n + (i.minutes || 0), 0),
   ),

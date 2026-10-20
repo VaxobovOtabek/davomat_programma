@@ -17,6 +17,21 @@ import { autoCompleteLessons } from "./attendance.js";
 export const payrollRouter = Router();
 const month = z.string().regex(/^20\d{2}-(0[1-9]|1[0-2])$/);
 const uuid = z.string().uuid();
+function parsePayrollItems(items: any): any[] {
+  if (!items) return [];
+  if (Array.isArray(items)) return items;
+  if (typeof items === "string") {
+    try {
+      const parsed = JSON.parse(items);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === "object") return Object.values(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (typeof items === "object") return Object.values(items);
+  return [];
+}
 function access(u: Record<string, any>) {
   if (!["owner", "admin", "accountant"].includes(u.role))
     fail(403, "Hisoblashga ruxsat yo‘q.");
@@ -45,13 +60,16 @@ payrollRouter.get(
       [u.org_id, m, u.role, u.branch_id],
     );
     res.json(
-      rows.map((r) => ({
-        ...r,
-        items:
-          u.role === "teacher"
-            ? r.items.filter((i: any) => i.teacher_id === u.id)
-            : r.items,
-      })),
+      rows.map((r) => {
+        const items = parsePayrollItems(r.items);
+        return {
+          ...r,
+          items:
+            u.role === "teacher"
+              ? items.filter((i: any) => i.teacher_id === u.id)
+              : items,
+        };
+      }),
     );
   }),
 );
@@ -200,7 +218,8 @@ payrollRouter.patch(
       )[0];
       if (fresh.state === "locked")
         fail(409, "Yopilgan hisobotni o‘zgartirib bo‘lmaydi.");
-      const item = fresh.items.find((i: any) => i.teacher_id === b.teacher_id);
+      const items = parsePayrollItems(fresh.items);
+      const item = items.find((i: any) => i.teacher_id === b.teacher_id);
       if (!item) fail(404, "Ustoz satri topilmadi.");
       item.bonus = String(b.bonus);
       item.deduction = String(b.deduction);
@@ -211,7 +230,7 @@ payrollRouter.patch(
         .toFixed(0);
       await tx.query(
         "UPDATE davomat.payroll SET items=$1,state='draft' WHERE id=$2",
-        [JSON.stringify(fresh.items), run.id],
+        [JSON.stringify(items), run.id],
       );
       await audit(tx, u, "payroll_adjusted", run.id, b);
     });
@@ -244,7 +263,8 @@ payrollRouter.post(
         )
       )
         fail(409, "Avval tekshiruvdagi va ochiq darslarni hal qiling.");
-      const saved = fresh.items.flatMap((i: any) => i.lessons);
+      const items = parsePayrollItems(fresh.items);
+      const saved = items.flatMap((i: any) => i.lessons || []);
       const approved = rows.filter(
         (a) => a.approval === "approved" && a.state === "completed",
       );
@@ -273,6 +293,7 @@ payrollRouter.get(
     const u = actor(req);
     access(u);
     const run = await getRun(uuid.parse(req.params.id), u);
+    const items = parsePayrollItems(run.items);
     const rows = [
       [
         "Davomat",
@@ -286,7 +307,7 @@ payrollRouter.get(
         run.state,
       ],
       ["Ustoz", "Daqiqa", "Hisoblangan", "Bonus", "Ushlab qolish", "Jami"],
-      ...run.items.map((i: any) => [
+      ...items.map((i: any) => [
         i.name,
         i.minutes,
         i.base,
@@ -316,8 +337,8 @@ payrollRouter.get(
         "Stavka",
         "Summa",
       ]);
-      for (const i of run.items)
-        for (const l of i.lessons)
+      for (const i of items)
+        for (const l of i.lessons || [])
           details.addRow([
             i.name,
             l.attendance_id,
