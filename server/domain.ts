@@ -1,20 +1,27 @@
 import Decimal from "decimal.js";
 export function minutesFor(
-  start: string,
-  end: string,
-  plannedStart: string,
-  plannedEnd: string,
-  breaks: { start: string; end: string | null }[],
+  start: string | Date,
+  end: string | Date,
+  plannedStart: string | Date,
+  plannedEnd: string | Date,
+  breaks: { start: string; end: string | null }[] = [],
 ) {
-  const a = Math.max(Date.parse(start), Date.parse(plannedStart));
-  const b = Math.min(Date.parse(end), Date.parse(plannedEnd));
-  if (b <= a) return 0;
-  const spans = breaks
+  const parse = (d: any) => {
+    if (!d) return NaN;
+    if (d instanceof Date) return d.getTime();
+    const t = Date.parse(String(d));
+    return isNaN(t) ? NaN : t;
+  };
+  const a = Math.max(parse(start), parse(plannedStart));
+  const b = Math.min(parse(end), parse(plannedEnd));
+  if (isNaN(a) || isNaN(b) || b <= a) return 0;
+  const safeBreaks = Array.isArray(breaks) ? breaks : [];
+  const spans = safeBreaks
     .map((x) => [
-      Math.max(a, Date.parse(x.start)),
-      Math.min(b, Date.parse(x.end || end)),
+      Math.max(a, parse(x.start)),
+      Math.min(b, parse(x.end || end)),
     ])
-    .filter((x) => x[1]! > x[0]!)
+    .filter((x) => !isNaN(x[0]!) && !isNaN(x[1]!) && x[1]! > x[0]!)
     .sort((x, y) => x[0]! - y[0]!);
   let pause = 0,
     last = a;
@@ -25,29 +32,39 @@ export function minutesFor(
   return Math.floor(Math.max(0, b - a - pause) / 60000);
 }
 export function amountFor(minutes: number, rate: string | number) {
+  if (!minutes || isNaN(minutes) || minutes <= 0) return "0.000000";
+  const r = Number(rate || 0);
+  if (isNaN(r) || r <= 0) return "0.000000";
   return new Decimal(rate).mul(minutes).div(60).toFixed(6);
 }
 // Subtract cumulative whole minutes so fractional minutes crossing an accounting
 // boundary are carried into the later period instead of being lost twice.
 export function minutesInWindow(
-  start: string,
-  end: string,
-  plannedStart: string,
-  plannedEnd: string,
-  breaks: { start: string; end: string | null }[],
-  windowStart: string,
-  windowEnd: string,
+  start: string | Date,
+  end: string | Date,
+  plannedStart: string | Date,
+  plannedEnd: string | Date,
+  breaks: { start: string; end: string | null }[] = [],
+  windowStart: string | Date,
+  windowEnd: string | Date,
 ) {
-  const until = (boundary: string) =>
-    minutesFor(
+  const parse = (d: any) => {
+    if (!d) return NaN;
+    if (d instanceof Date) return d.getTime();
+    return Date.parse(String(d));
+  };
+  const pEnd = parse(plannedEnd);
+  const until = (boundary: string | Date) => {
+    const b = parse(boundary);
+    const minEnd = Math.min(pEnd, b);
+    return minutesFor(
       start,
       end,
       plannedStart,
-      new Date(
-        Math.min(Date.parse(plannedEnd), Date.parse(boundary)),
-      ).toISOString(),
+      new Date(minEnd).toISOString(),
       breaks,
     );
+  };
   return Math.max(0, until(windowEnd) - until(windowStart));
 }
 export function distanceM(a: number, b: number, c: number, d: number) {

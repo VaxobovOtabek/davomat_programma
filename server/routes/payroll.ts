@@ -13,6 +13,7 @@ import {
   lockOrg,
 } from "../security.js";
 import { minutesInWindow, amountFor, monthWindow, csvCell } from "../domain.js";
+import { autoCompleteLessons } from "./attendance.js";
 export const payrollRouter = Router();
 const month = z.string().regex(/^20\d{2}-(0[1-9]|1[0-2])$/);
 const uuid = z.string().uuid();
@@ -65,6 +66,29 @@ payrollRouter.post(
     const id = randomUUID();
     await transaction(async (tx) => {
       await lockOrg(tx, u);
+      await autoCompleteLessons(tx);
+
+      // Vaqti o'tib bo'lgan, lekin davomati belgilanmagan rejadagi darslar uchun avtomatik yakunlangan davomat yozuvini shakllantirish
+      const scheduledEnded = await tx.query(
+        "SELECT l.*, COALESCE((SELECT r.hourly_rate FROM davomat.rates r WHERE r.user_id=l.teacher_id AND r.effective_from<=($3::timestamptz AT TIME ZONE 'Asia/Tashkent')::date ORDER BY r.effective_from DESC LIMIT 1), (SELECT r.hourly_rate FROM davomat.rates r WHERE r.user_id=l.teacher_id ORDER BY r.effective_from DESC LIMIT 1), 0) hourly_rate FROM davomat.lessons l WHERE l.org_id=$1 AND l.branch_id=$2 AND l.starts_at<$3 AND l.ends_at>$4 AND l.status='scheduled' AND l.ends_at<=now() AND NOT EXISTS(SELECT 1 FROM davomat.attendance a WHERE a.lesson_id=l.id)",
+        [u.org_id, b.branch_id, w.end, w.start],
+      );
+      for (const sl of scheduledEnded) {
+        await tx.query(
+          "INSERT INTO davomat.attendance(id,org_id,branch_id,teacher_id,lesson_id,state,approval,started_at,ended_at,planned_start,planned_end,hourly_rate,breaks,reason,version) VALUES($1,$2,$3,$4,$5,'completed','approved',$6,$7,$6,$7,$8,'[]','Jadval bo‘yicha o‘tilgan',1)",
+          [
+            randomUUID(),
+            u.org_id,
+            sl.branch_id,
+            sl.teacher_id,
+            sl.id,
+            sl.starts_at,
+            sl.ends_at,
+            sl.hourly_rate || "0",
+          ],
+        );
+      }
+
       const rows = await tx.query(
         "SELECT a.*,u.first_name,u.last_name,l.subject FROM davomat.attendance a JOIN davomat.users u ON u.id=a.teacher_id JOIN davomat.lessons l ON l.id=a.lesson_id WHERE a.org_id=$1 AND a.branch_id=$2 AND a.started_at<$3 AND COALESCE(a.ended_at,a.planned_end)>$4",
         [u.org_id, b.branch_id, w.end, w.start],
@@ -72,16 +96,31 @@ payrollRouter.post(
       const items = new Map<string, any>();
       for (const a of rows) {
         if (a.approval !== "approved" || a.state !== "completed") continue;
+        const end = a.ended_at || a.planned_end;
+        const rawBreaks =
+          typeof a.breaks === "string"
+            ? JSON.parse(a.breaks)
+            : a.breaks || [];
         const minutes = minutesInWindow(
           a.started_at,
-          a.ended_at,
+          end,
           a.planned_start,
           a.planned_end,
-          a.breaks,
+          rawBreaks,
           w.start,
           w.end,
         );
-        const amount = amountFor(minutes, a.hourly_rate);
+        let rate = a.hourly_rate;
+        if (!rate || Number(rate) === 0) {
+          const rRow = (
+            await tx.query(
+              "SELECT hourly_rate FROM davomat.rates WHERE user_id=$1 ORDER BY effective_from DESC LIMIT 1",
+              [a.teacher_id],
+            )
+          )[0];
+          if (rRow) rate = rRow.hourly_rate;
+        }
+        const amount = amountFor(minutes, rate || "0");
         const item = items.get(a.teacher_id) || {
           teacher_id: a.teacher_id,
           name: a.first_name + " " + a.last_name,
@@ -95,15 +134,19 @@ payrollRouter.post(
         };
         item.minutes += minutes;
         item.base = new Decimal(item.base).add(amount).toFixed(6);
-        item.total = new Decimal(item.base).toFixed(0);
+        item.total = new Decimal(item.base)
+          .add(item.bonus || 0)
+          .sub(item.deduction || 0)
+          .round()
+          .toFixed(0);
         item.lessons.push({
           attendance_id: a.id,
           version: a.version,
           subject: a.subject,
-          start: a.started_at,
-          end: a.ended_at,
+          start: typeof a.started_at === "object" ? a.started_at.toISOString() : String(a.started_at),
+          end: typeof end === "object" ? end.toISOString() : String(end),
           minutes,
-          rate: a.hourly_rate,
+          rate: String(rate || 0),
           amount,
         });
         items.set(a.teacher_id, item);

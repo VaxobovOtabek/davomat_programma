@@ -267,6 +267,7 @@ code {
     800 30px "Manrope",
     sans-serif;
   letter-spacing: -1.5px;
+  margin-bottom: 28px;
 }
 .brand-mark {
   height: 40px;
@@ -377,7 +378,7 @@ code {
 }
 .sidebar-user {
   border-top: 1px solid #ffffff12;
-  margin: 0 -20px;
+  margin: auto -20px 0 -20px;
   padding: 20px 18px;
   display: flex;
   gap: 9px;

@@ -49,11 +49,6 @@ const title = computed(
         ><span class="brand-mark"><Icon name="attendance" :size="25" /></span
         ><span>davomat<span class="brand-dot">.</span></span></RouterLink
       >
-      <div class="workspace">
-        <span class="workspace-icon"><Icon name="school" /></span>
-        <div><strong>Ta’lim boshqaruvi</strong><small>Ish muhiti</small></div>
-        <Icon name="right" :size="15" />
-      </div>
       <span class="nav-label">BOSHQARUV PANELI</span>
       <nav>
         <RouterLink
@@ -66,11 +61,6 @@ const title = computed(
           ><span v-if="route.path === link.path" class="nav-dot"></span
         ></RouterLink>
       </nav>
-      <div class="sidebar-note">
-        <div class="note-icon"><Icon name="shield" :size="20" /></div>
-        <strong>Har bir daqiqa hisobda</strong>
-        <p>Davomat va oylik — bir joyda, aniq va tartibli.</p>
-      </div>
       <div class="sidebar-user">
         <span class="avatar small">{{
           initials(s.user.first_name, s.user.last_name)
@@ -103,16 +93,14 @@ const title = computed(
           }}</strong>
         </div>
         <div class="topbar-right">
-          <span class="secure"><i></i> Himoyalangan tizim</span
-          ><span class="avatar small">{{
+          <span class="avatar small">{{
             initials(s.user.first_name, s.user.last_name)
           }}</span>
         </div>
       </header>
       <main class="content"><RouterView /></main>
       <footer class="footer">
-        <span>© {{ new Date().getFullYear() }} Davomat</span
-        ><span>Ta’limdagi har bir daqiqa qadrli.</span>
+        <span>© {{ new Date().getFullYear() }} Davomat</span>
       </footer>
     </div>
     <nav class="mobile-bottom">

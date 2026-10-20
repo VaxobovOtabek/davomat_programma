@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { api, post, today, money, dateLabel, toast } from "../api";
+import { api, post, today, money, dateLabel, timeLabel, toast } from "../api";
 import { useSession } from "../session";
 import Icon from "../components/Icon.vue";
 import Modal from "../components/Modal.vue";
@@ -18,26 +18,50 @@ const s = useSession(),
   deduction = ref(0),
   reason = ref("");
 const teacher = computed(() => s.user?.role === "teacher"),
+  branchRuns = computed(() => {
+    if (teacher.value || !branch.value) return runs.value;
+    return runs.value.filter((r) => r.branch_id === branch.value);
+  }),
   run = computed(
-    () => runs.value.find((r) => r.id === runId.value) || runs.value[0],
+    () =>
+      (runId.value
+        ? runs.value.find((r) => r.id === runId.value)
+        : branchRuns.value[0]) || null,
   ),
   items = computed(() => run.value?.items || []),
   minutes = computed(() =>
-    items.value.reduce((n: number, i: any) => n + i.minutes, 0),
+    items.value.reduce((n: number, i: any) => n + (i.minutes || 0), 0),
   ),
   total = computed(() =>
-    items.value.reduce((n: number, i: any) => n + Number(i.total), 0),
+    items.value.reduce((n: number, i: any) => n + Number(i.total || 0), 0),
   );
 async function load() {
   try {
-    runs.value = await api("/payroll?month=" + month.value);
-    branches.value = await api("/branches");
+    const [rData, bData] = await Promise.all([
+      api("/payroll?month=" + month.value),
+      api("/branches"),
+    ]);
+    runs.value = rData;
+    branches.value = bData;
+    if (
+      (!branch.value || !branches.value.some((b) => b.id === branch.value)) &&
+      branches.value.length > 0
+    ) {
+      branch.value = branches.value[0].id;
+    }
     error.value = "";
   } catch (e) {
     error.value = (e as Error).message;
   }
 }
 async function calculate() {
+  if (!branch.value && branches.value.length > 0) {
+    branch.value = branches.value[0].id;
+  }
+  if (!branch.value) {
+    error.value = "Filial tanlanmagan.";
+    return;
+  }
   busy.value = true;
   try {
     const r = await post("/payroll/calculate", {
@@ -46,7 +70,7 @@ async function calculate() {
     });
     runId.value = r.id;
     await load();
-    toast("Hisobot hisoblandi.");
+    toast("Oylik hisoblandi.");
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -128,13 +152,25 @@ onMounted(load);
         runId = '';
         load();
       "
-    /><select v-if="!teacher" v-model="branch" aria-label="Filial">
+    /><select
+      v-if="!teacher"
+      v-model="branch"
+      aria-label="Filial"
+      @change="
+        runId = '';
+        load();
+      "
+    >
       <option v-for="b in branches" :key="b.id" :value="b.id">
         {{ b.name }}
       </option></select
-    ><select v-if="runs.length" v-model="runId" aria-label="Hisobot versiyasi">
+    ><select
+      v-if="branchRuns.length"
+      v-model="runId"
+      aria-label="Hisobot versiyasi"
+    >
       <option value="">Eng so‘nggi hisobot</option>
-      <option v-for="r in runs" :key="r.id" :value="r.id">
+      <option v-for="r in branchRuns" :key="r.id" :value="r.id">
         v{{ r.version }} ·
         {{ r.state === "locked" ? "Yopilgan" : "Qoralama" }} ·
         {{ branches.find((b) => b.id === r.branch_id)?.name }}
@@ -154,7 +190,7 @@ onMounted(load);
         <span>Jami daqiqa</span
         ><span class="stat-icon teal"><Icon name="clock" /></span>
       </div>
-      <strong>{{ money(minutes) }}</strong
+      <strong>{{ money(minutes) }} <span class="stat-unit">daq</span></strong
       ><small
         >{{ Math.floor(minutes / 60) }} soat {{ minutes % 60 }} daqiqa</small
       >
@@ -210,7 +246,7 @@ onMounted(load);
         {{
           teacher
             ? "Admin hisoblagan oylik bu yerda chiqadi."
-            : "Tasdiqlangan, yakunlangan darslar bo‘lgach oylikni hisoblang."
+            : "Tanlangan oy va filial bo‘yicha darslar o‘tilgach yoki davomat tasdiqlangach oylikni hisoblang."
         }}
       </p>
     </div>
@@ -233,10 +269,13 @@ onMounted(load);
               <strong>{{ i.name }}</strong
               ><small>{{ i.lessons.length }} ta dars</small>
             </td>
-            <td>{{ money(i.minutes) }}</td>
-            <td>{{ money(i.base) }}</td>
-            <td class="green-text">+{{ money(i.bonus) }}</td>
-            <td>{{ money(i.deduction) }}</td>
+            <td>
+              <strong>{{ money(i.minutes) }} daq</strong>
+              <small v-if="i.minutes >= 60">{{ Math.floor(i.minutes / 60) }} soat {{ i.minutes % 60 }} daq</small>
+            </td>
+            <td>{{ money(i.base) }} so‘m</td>
+            <td class="green-text">+{{ money(i.bonus) }} so‘m</td>
+            <td>{{ money(i.deduction) }} so‘m</td>
             <td>
               <strong>{{ money(i.total) }} so‘m</strong>
             </td>
@@ -245,6 +284,7 @@ onMounted(load);
                 <button
                   class="icon-button"
                   aria-label="Darslar tafsiloti"
+                  title="Darslar tafsiloti"
                   @click="detail = i"
                 >
                   <Icon name="eye" :size="18" /></button
@@ -252,6 +292,7 @@ onMounted(load);
                   v-if="!teacher && run.state !== 'locked'"
                   class="icon-button"
                   aria-label="Bonus va ushlab qolish"
+                  title="Bonus va ushlab qolish"
                   @click="
                     adjust = i;
                     bonus = Number(i.bonus);
@@ -277,7 +318,7 @@ onMounted(load);
   </section>
   <Modal
     v-if="detail"
-    :title="detail.name + ' — darslar'"
+    :title="detail.name + ' — darslar tafsiloti'"
     wide
     @close="detail = null"
     ><div class="modal-body table-scroll">
@@ -285,7 +326,7 @@ onMounted(load);
         <thead>
           <tr>
             <th>Fan</th>
-            <th>Sana</th>
+            <th>Sana va vaqt</th>
             <th>Daqiqa</th>
             <th>Stavka / soat</th>
             <th>Summa</th>
@@ -293,11 +334,11 @@ onMounted(load);
         </thead>
         <tbody>
           <tr v-for="l in detail.lessons" :key="l.attendance_id">
-            <td>{{ l.subject }}</td>
-            <td>{{ dateLabel(l.start) }}</td>
-            <td>{{ l.minutes }}</td>
-            <td>{{ money(l.rate) }}</td>
-            <td>{{ money(l.amount) }}</td>
+            <td><strong>{{ l.subject }}</strong></td>
+            <td>{{ dateLabel(l.start) }} · {{ timeLabel(l.start) }} – {{ timeLabel(l.end) }}</td>
+            <td><strong>{{ l.minutes }} daq</strong></td>
+            <td>{{ money(l.rate) }} so‘m</td>
+            <td><strong>{{ money(l.amount) }} so‘m</strong></td>
           </tr>
         </tbody>
       </table>

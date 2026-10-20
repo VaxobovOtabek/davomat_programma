@@ -18,6 +18,7 @@ const s = useSession(),
   lessons = ref<Lesson[]>([]),
   users = ref<User[]>([]),
   branches = ref<Branch[]>([]),
+  attendances = ref<any[]>([]),
   show = ref(false),
   editingId = ref(""),
   error = ref(""),
@@ -38,8 +39,14 @@ const form = ref({
 async function load() {
   try {
     const r = dayRange(date.value);
-    lessons.value = await api("/lessons?" + new URLSearchParams(r));
-    branches.value = await api("/branches");
+    const [lData, bData, aData] = await Promise.all([
+      api("/lessons?" + new URLSearchParams(r)),
+      api("/branches"),
+      api("/attendance"),
+    ]);
+    lessons.value = lData;
+    branches.value = bData;
+    attendances.value = aData;
     if (canEdit.value)
       users.value = (await api<User[]>("/users")).filter(
         (u) => u.role === "teacher" && u.status === "active",
@@ -47,6 +54,19 @@ async function load() {
     error.value = "";
   } catch (e) {
     error.value = (e as Error).message;
+  }
+}
+async function markLessonCompleted(l: Lesson) {
+  if (!window.confirm(`"${l.subject}" darsi o‘tildi deb davomat kiritilsinmi?`)) return;
+  busy.value = true;
+  try {
+    await post("/attendance/mark-completed", { lesson_id: l.id });
+    await load();
+    toast("Dars o‘tildi deb davomatga kiritildi.");
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
   }
 }
 async function save() {
@@ -163,6 +183,19 @@ onMounted(load);
         ><span class="badge" :class="l.status === 'scheduled' ? 'green' : ''">{{
           l.status === "scheduled" ? "Rejada" : "Bekor qilingan"
         }}</span
+        ><span
+          v-if="attendances.some((a) => a.lesson_id === l.id)"
+          class="badge green"
+          title="Ushbu dars uchun davomat mavjud"
+          ><Icon name="check" :size="14" />Davomat bor</span
+        ><button
+          v-else-if="canEdit && l.status === 'scheduled'"
+          class="btn secondary small-btn"
+          title="Dars o‘tildi deb davomat kiritish"
+          :disabled="busy"
+          @click="markLessonCompleted(l)"
+        >
+          <Icon name="check" :size="14" />O‘tildi</button
         ><button
           v-if="canEdit && l.status === 'scheduled'"
           class="icon-button"

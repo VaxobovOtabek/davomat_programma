@@ -315,6 +315,73 @@ attendanceRouter.post(
   }),
 );
 attendanceRouter.post(
+  "/attendance/mark-completed",
+  asyncRoute(async (req, res) => {
+    const u = actor(req);
+    manage(u);
+    const b = z
+      .object({
+        lesson_id: uuid,
+      })
+      .parse(req.body);
+    await transaction(async (tx) => {
+      await lockOrg(tx, u);
+      const l = (
+        await tx.query(
+          "SELECT * FROM davomat.lessons WHERE id=$1 AND org_id=$2 AND status='scheduled'",
+          [b.lesson_id, u.org_id],
+        )
+      )[0];
+      if (!l) fail(404, "Dars topilmadi yoki bekor qilingan.");
+      branchAllowed(u, l.branch_id);
+
+      const existing = (
+        await tx.query(
+          "SELECT id FROM davomat.attendance WHERE lesson_id=$1",
+          [l.id],
+        )
+      )[0];
+      if (existing) fail(409, "Ushbu dars uchun davomat yozuvi allaqachon mavjud.");
+
+      const r =
+        (
+          await tx.query(
+            "SELECT hourly_rate FROM davomat.rates WHERE user_id=$1 AND effective_from<=($2::timestamptz AT TIME ZONE 'Asia/Tashkent')::date ORDER BY effective_from DESC LIMIT 1",
+            [l.teacher_id, l.starts_at],
+          )
+        )[0] ||
+        (
+          await tx.query(
+            "SELECT hourly_rate FROM davomat.rates WHERE user_id=$1 ORDER BY effective_from DESC LIMIT 1",
+            [l.teacher_id],
+          )
+        )[0];
+
+      const rate = r?.hourly_rate || "0";
+      const id = randomUUID();
+      await tx.query(
+        `INSERT INTO davomat.attendance(
+          id, org_id, branch_id, teacher_id, lesson_id,
+          state, approval, started_at, ended_at, planned_start, planned_end,
+          hourly_rate, breaks, reason, version
+        ) VALUES ($1,$2,$3,$4,$5,'completed','approved',$6,$7,$6,$7,$8,'[]','Admin tomonidan tasdiqlangan',1)`,
+        [
+          id,
+          u.org_id,
+          l.branch_id,
+          l.teacher_id,
+          l.id,
+          l.starts_at,
+          l.ends_at,
+          rate,
+        ],
+      );
+      await audit(tx, u, "attendance_admin_marked", id, { lesson_id: l.id });
+    });
+    res.json({ ok: true });
+  }),
+);
+attendanceRouter.post(
   "/corrections",
   asyncRoute(async (req, res) => {
     const u = actor(req);
